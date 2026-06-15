@@ -1,5 +1,4 @@
-// Obol - x402 paywall with REAL on-chain settlement verification (Arc Testnet)
-// Unpaid -> 402 with x402 payment spec. Paid -> verify USDC Transfer to payTo on-chain -> 200 + body.
+// Obol - x402 paywall with REAL on-chain settlement verification + replay protection (Arc Testnet)
 import { getArticle } from "../../lib/content.js"
 
 const PAYOUT = (process.env.PAYOUT_ADDRESS || "0xdc6778c5f8cc74b10aed11c48306d4cfc5737fbd").toLowerCase()
@@ -10,6 +9,7 @@ const PRICE_ATOMIC = "50000" // 0.05 USDC (6 decimals)
 const PRICE_USD = "$0.05"
 const RPC_URL = process.env.RPC_URL || "https://rpc.testnet.arc.network"
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+const MAX_AGE_SECONDS = 600 // anti-replay freshness window
 
 function spec(article, resource) {
   return {
@@ -65,10 +65,30 @@ async function verifyPayment(txHash) {
     if ((log.topics[2] || "").toLowerCase() !== wantTo) continue
     const value = BigInt(log.data)
     if (value >= minVal) {
-      return { ok: true, value: value.toString(), from: "0x" + (log.topics[1] || "").slice(26) }
+      return { ok: true, value: value.toString(), from: "0x" + (log.topics[1] || "").slice(26), blockNumber: receipt.blockNumber }
     }
   }
   return { ok: false, reason: "no USDC Transfer to payTo for >= required amount in this tx" }
+}
+
+async function blockAgeSeconds(blockNumberHex) {
+  if (!blockNumberHex) return null
+  const block = await rpc("eth_getBlockByNumber", [blockNumberHex, false])
+  if (!block || !block.timestamp) return null
+  const ts = parseInt(block.timestamp, 16)
+  return Math.floor(Date.now() / 1000) - ts
+}
+
+async function markUsed(txHash) {
+  const url = process.env.KV_REST_API_URL
+  const token = process.env.KV_REST_API_TOKEN
+  if (!url || !token) return { enabled: false, fresh: true }
+  const key = "obol:tx:" + txHash.toLowerCase()
+  const r = await fetch(url.replace(/\/+$/, "") + "/set/" + key + "/1/NX/EX/86400", {
+    headers: { Authorization: "Bearer " + token },
+  })
+  const j = await r.json()
+  return { enabled: true, fresh: j && j.result === "OK" }
 }
 
 export default async function handler(req, res) {
@@ -105,6 +125,22 @@ export default async function handler(req, res) {
     return
   }
 
+  // M3b: freshness window (reject stale / leaked tx)
+  let age = null
+  try { age = await blockAgeSeconds(result.blockNumber) } catch (e) { age = null }
+  if (age !== null && age > MAX_AGE_SECONDS) {
+    res.status(402).json({ x402Version: 1, error: "payment expired: tx is " + age + "s old (max " + MAX_AGE_SECONDS + "s); send a fresh payment", accepts: [spec(article, resource)] })
+    return
+  }
+
+  // M3b: one-time-use dedupe (optional KV-backed)
+  let used = { enabled: false, fresh: true }
+  try { used = await markUsed(txHash) } catch (e) { used = { enabled: false, fresh: true } }
+  if (used.enabled && !used.fresh) {
+    res.status(402).json({ x402Version: 1, error: "payment already redeemed (replay blocked)", accepts: [spec(article, resource)] })
+    return
+  }
+
   res.setHeader("X-PAYMENT-RESPONSE", Buffer.from(JSON.stringify({ success: true, txHash, network: NETWORK })).toString("base64"))
   res.status(200).json({
     id,
@@ -119,7 +155,8 @@ export default async function handler(req, res) {
       payTo: PAYOUT,
       txHash,
       explorer: "https://testnet.arcscan.app/tx/" + txHash,
-      note: "no replay protection yet (added in M3b)",
+      replayProtection: used.enabled ? "one-time-use (KV) + freshness " + MAX_AGE_SECONDS + "s" : "freshness " + MAX_AGE_SECONDS + "s (set KV_REST_API_URL/KV_REST_API_TOKEN for cross-request dedupe)",
+      ageSeconds: age,
     },
   })
 }
