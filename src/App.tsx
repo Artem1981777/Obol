@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { CSSProperties } from "react"
 
 declare global {
@@ -19,30 +19,6 @@ const ARC = {
   rpcUrls: ["https://rpc.testnet.arc.network"],
   blockExplorerUrls: ["https://testnet.arcscan.app"],
 }
-
-const ARTICLES: Article[] = [
-  {
-    id: "a1",
-    title: "Why subscriptions are killing independent writing",
-    author: "gromov7.eth",
-    minutes: 6,
-    preview: "Every newsletter wants $8/month. Readers hit a wall after the third one and churn. The problem is not the price - it is the unit. Nobody wants a relationship with 40 publications...",
-  },
-  {
-    id: "a2",
-    title: "Nanopayments: the missing primitive of the creator economy",
-    author: "gromov7.eth",
-    minutes: 4,
-    preview: "We talk about the creator economy as if it were solved. It is not. The settlement rail is wrong, and when the rail changes the business models it can carry change with it...",
-  },
-  {
-    id: "a3",
-    title: "How x402 turns any article into a storefront",
-    author: "gromov7.eth",
-    minutes: 5,
-    preview: "HTTP 402 Payment Required sat dormant for thirty years. Coinbase woke it up. Here is what that means for a humble blog post...",
-  },
-]
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -68,6 +44,7 @@ const btn: CSSProperties = { marginTop: "14px", padding: "10px 18px", border: "n
 const receiptBox: CSSProperties = { marginTop: "12px", fontSize: "12px", color: "#1a7f37", background: "#f3faf3", border: "1px solid #cfe9cf", borderRadius: "8px", padding: "8px 12px", fontFamily: "system-ui, sans-serif" }
 const link: CSSProperties = { color: "#1a7f37", fontWeight: 600 }
 const errText: CSSProperties = { marginTop: "10px", fontSize: "12px", color: "#b42318", fontFamily: "system-ui, sans-serif" }
+const dim: CSSProperties = { fontSize: "13px", color: "#999", fontFamily: "system-ui, sans-serif", padding: "24px 0" }
 
 function label(st?: ArtState) {
   switch (st && st.status) {
@@ -80,7 +57,16 @@ function label(st?: ArtState) {
 
 export default function App() {
   const [acct, setAcct] = useState<string>("")
+  const [arts, setArts] = useState<Article[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
   const [states, setStates] = useState<Record<string, ArtState>>({})
+
+  useEffect(() => {
+    fetch("/api/articles")
+      .then((r) => r.json())
+      .then((j: any) => { setArts(j.articles || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
 
   const patch = (id: string, p: Partial<ArtState>) =>
     setStates((s) => ({ ...s, [id]: { ...(s[id] || { status: "locked" }), ...p } as ArtState }))
@@ -146,7 +132,9 @@ export default function App() {
           : <button style={connectBtn} onClick={connect}>Connect wallet</button>}
       </div>
       <div style={note}>Live on Arc Testnet - "Unlock" sends a real {PRICE} USDC transfer; the server verifies on-chain settlement before returning the article.</div>
-      {ARTICLES.map((a) => {
+      {loading && <div style={dim}>Loading articles...</div>}
+      {!loading && arts.length === 0 && <div style={dim}>No articles available.</div>}
+      {arts.map((a) => {
         const st = states[a.id]
         const unlocked = !!st && st.status === "unlocked"
         const busy = !!st && (st.status === "connecting" || st.status === "paying" || st.status === "verifying")

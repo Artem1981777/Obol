@@ -1,5 +1,6 @@
-// Obol M2a - x402 paywall with REAL on-chain settlement verification (Arc Testnet)
+// Obol - x402 paywall with REAL on-chain settlement verification (Arc Testnet)
 // Unpaid -> 402 with x402 payment spec. Paid -> verify USDC Transfer to payTo on-chain -> 200 + body.
+import { getArticle } from "../../lib/content.js"
 
 const PAYOUT = (process.env.PAYOUT_ADDRESS || "0xdc6778c5f8cc74b10aed11c48306d4cfc5737fbd").toLowerCase()
 const USDC = "0x3600000000000000000000000000000000000000"
@@ -9,21 +10,6 @@ const PRICE_ATOMIC = "50000" // 0.05 USDC (6 decimals)
 const PRICE_USD = "$0.05"
 const RPC_URL = process.env.RPC_URL || "https://rpc.testnet.arc.network"
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-
-const ARTICLES = {
-  a1: {
-    title: "Why subscriptions are killing independent writing",
-    body: "The smallest sellable unit of writing has always been the article, but the web never had a way to sell it. Card fees ate anything under a dollar, so publishers bundled everything into subscriptions. x402 changes the unit economics: a reader pays a few cents over HTTP, settles in USDC on Arc in under two seconds, and the author is paid instantly with no intermediary.",
-  },
-  a2: {
-    title: "Nanopayments: the missing primitive of the creator economy",
-    body: "A nanopayment is a payment so small that traditional rails make it impossible. At five cents, a 30-cent card fee is a non-starter. Stablecoin transfers on Arc cost a fraction of a cent and settle on-chain with no chargebacks. That single fact unlocks pay-per-paragraph, pay-per-minute, and pay-per-query - the genuinely smallest sellable units.",
-  },
-  a3: {
-    title: "How x402 turns any article into a storefront",
-    body: "When a reader requests a locked article, the server answers 402 with a payment specification: amount, asset (USDC), network (Arc), and the author payout address. The reader wallet signs and pays, the request is retried, and the server returns 200 with the full body plus an on-chain receipt. No accounts, no sessions, no Stripe.",
-  },
-}
 
 function spec(article, resource) {
   return {
@@ -93,7 +79,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(204).end(); return }
 
   const id = req.query.id
-  const article = ARTICLES[id]
+  const article = await getArticle(id)
   if (!article) { res.status(404).json({ error: "article not found" }); return }
 
   const host = req.headers["x-forwarded-host"] || req.headers.host || "obol-theta.vercel.app"
@@ -115,11 +101,7 @@ export default async function handler(req, res) {
   }
 
   if (!result.ok) {
-    res.status(402).json({
-      x402Version: 1,
-      error: "payment verification failed: " + result.reason,
-      accepts: [spec(article, resource)],
-    })
+    res.status(402).json({ x402Version: 1, error: "payment verification failed: " + result.reason, accepts: [spec(article, resource)] })
     return
   }
 
@@ -137,7 +119,7 @@ export default async function handler(req, res) {
       payTo: PAYOUT,
       txHash,
       explorer: "https://testnet.arcscan.app/tx/" + txHash,
-      note: "no replay protection yet (added in M3)",
+      note: "no replay protection yet (added in M3b)",
     },
   })
 }
