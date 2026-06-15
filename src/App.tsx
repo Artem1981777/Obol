@@ -6,11 +6,12 @@ declare global {
 }
 
 type Article = { id: string; title: string; author: string; minutes: number; preview: string }
-type Receipt = { verified: boolean; amount?: string; from?: string; payTo?: string; txHash?: string; explorer?: string }
+type Receipt = { verified: boolean; amount?: string; from?: string; payTo?: string; txHash?: string; explorer?: string; replayProtection?: string }
 type ArtState = { status: "locked" | "connecting" | "paying" | "verifying" | "unlocked" | "error"; body?: string; receipt?: Receipt; error?: string }
 
 const PRICE = "$0.05"
 const API = "/api/article/"
+const REPO = "https://github.com/Artem1981777/Obol"
 
 const ARC = {
   chainId: "0x4cef52",
@@ -20,6 +21,14 @@ const ARC = {
   blockExplorerUrls: ["https://testnet.arcscan.app"],
 }
 
+const BADGES: Array<{ kind: "live" | "sim"; text: string }> = [
+  { kind: "live", text: "LIVE - HTTP 402 handshake" },
+  { kind: "live", text: "LIVE - real USDC transfer on Arc" },
+  { kind: "live", text: "LIVE - on-chain settlement verify" },
+  { kind: "live", text: "LIVE - replay protection" },
+  { kind: "sim", text: "SIMPLIFIED - self-hosted verifier (not full x402 facilitator)" },
+]
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 function encodeTransfer(to: string, amount: bigint): string {
@@ -28,23 +37,30 @@ function encodeTransfer(to: string, amount: bigint): string {
   return "0xa9059cbb" + addr + amt
 }
 
-const page: CSSProperties = { maxWidth: "720px", margin: "0 auto", padding: "28px 20px", fontFamily: "Georgia, serif", color: "#1a1a1a" }
+const page: CSSProperties = { maxWidth: "720px", margin: "0 auto", padding: "28px 20px 56px", fontFamily: "Georgia, serif", color: "#1a1a1a" }
 const topbar: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }
 const brand: CSSProperties = { fontSize: "13px", letterSpacing: "4px", color: "#a67c2e", fontWeight: 700, fontFamily: "system-ui, sans-serif" }
 const tagline: CSSProperties = { fontSize: "13px", color: "#777", marginTop: "2px", fontFamily: "system-ui, sans-serif" }
+const chainline: CSSProperties = { fontSize: "11px", color: "#999", marginTop: "6px", fontFamily: "ui-monospace, monospace" }
 const connectBtn: CSSProperties = { padding: "8px 14px", border: "1px solid #1a1a1a", borderRadius: "999px", background: "#fff", color: "#1a1a1a", fontSize: "13px", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "system-ui, sans-serif" }
 const acctPill: CSSProperties = { padding: "8px 14px", borderRadius: "999px", background: "#eef6ee", color: "#1a7f37", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace" }
-const note: CSSProperties = { fontSize: "11px", color: "#9a6b00", background: "#fdf6e3", border: "1px solid #efe3bf", borderRadius: "8px", padding: "8px 12px", margin: "14px 0 24px", fontFamily: "system-ui, sans-serif" }
+const badgeRow: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "6px", margin: "16px 0 6px" }
+const badgeLive: CSSProperties = { fontSize: "10px", fontWeight: 700, letterSpacing: "0.3px", color: "#1a7f37", background: "#eef6ee", border: "1px solid #cfe9cf", borderRadius: "999px", padding: "3px 9px", fontFamily: "system-ui, sans-serif" }
+const badgeSim: CSSProperties = { fontSize: "10px", fontWeight: 700, letterSpacing: "0.3px", color: "#9a6b00", background: "#fdf6e3", border: "1px solid #efe3bf", borderRadius: "999px", padding: "3px 9px", fontFamily: "system-ui, sans-serif" }
+const note: CSSProperties = { fontSize: "11px", color: "#777", margin: "0 0 22px", fontFamily: "system-ui, sans-serif", lineHeight: 1.5 }
 const card: CSSProperties = { borderTop: "1px solid #e5e5e5", padding: "24px 0" }
 const h2: CSSProperties = { fontSize: "24px", margin: "0 0 6px", lineHeight: 1.25 }
 const meta: CSSProperties = { fontSize: "12px", color: "#888", marginBottom: "12px", fontFamily: "system-ui, sans-serif" }
 const text: CSSProperties = { fontSize: "16px", lineHeight: 1.7, color: "#333" }
 const fade: CSSProperties = { fontSize: "16px", lineHeight: 1.7, color: "#aaa", fontStyle: "italic" }
 const btn: CSSProperties = { marginTop: "14px", padding: "10px 18px", border: "none", borderRadius: "999px", background: "#1a1a1a", color: "#fff", fontSize: "14px", fontWeight: 600, cursor: "pointer", fontFamily: "system-ui, sans-serif" }
-const receiptBox: CSSProperties = { marginTop: "12px", fontSize: "12px", color: "#1a7f37", background: "#f3faf3", border: "1px solid #cfe9cf", borderRadius: "8px", padding: "8px 12px", fontFamily: "system-ui, sans-serif" }
+const btnBusy: CSSProperties = { ...btn, background: "#888", cursor: "default" }
+const receiptBox: CSSProperties = { marginTop: "12px", fontSize: "12px", color: "#1a7f37", background: "#f3faf3", border: "1px solid #cfe9cf", borderRadius: "8px", padding: "10px 12px", fontFamily: "system-ui, sans-serif", lineHeight: 1.6 }
 const link: CSSProperties = { color: "#1a7f37", fontWeight: 600 }
 const errText: CSSProperties = { marginTop: "10px", fontSize: "12px", color: "#b42318", fontFamily: "system-ui, sans-serif" }
 const dim: CSSProperties = { fontSize: "13px", color: "#999", fontFamily: "system-ui, sans-serif", padding: "24px 0" }
+const footer: CSSProperties = { borderTop: "1px solid #e5e5e5", marginTop: "32px", paddingTop: "18px", fontSize: "12px", color: "#999", fontFamily: "system-ui, sans-serif", lineHeight: 1.7 }
+const footLink: CSSProperties = { color: "#777", fontWeight: 600 }
 
 function label(st?: ArtState) {
   switch (st && st.status) {
@@ -126,12 +142,20 @@ export default function App() {
         <div>
           <div style={brand}>OBOL</div>
           <div style={tagline}>Pay-per-article on Arc - make the smallest unit sellable.</div>
+          <div style={chainline}>Arc Testnet - USDC - {PRICE} / article</div>
         </div>
         {acct
           ? <span style={acctPill}>{acct.slice(0, 6)}...{acct.slice(-4)}</span>
           : <button style={connectBtn} onClick={connect}>Connect wallet</button>}
       </div>
-      <div style={note}>Live on Arc Testnet - "Unlock" sends a real {PRICE} USDC transfer; the server verifies on-chain settlement before returning the article.</div>
+
+      <div style={badgeRow}>
+        {BADGES.map((b, i) => (
+          <span key={i} style={b.kind === "live" ? badgeLive : badgeSim}>{b.text}</span>
+        ))}
+      </div>
+      <div style={note}>"Unlock" sends a real {PRICE} USDC transfer on Arc Testnet; the server verifies on-chain settlement before returning the article. No fake data.</div>
+
       {loading && <div style={dim}>Loading articles...</div>}
       {!loading && arts.length === 0 && <div style={dim}>No articles available.</div>}
       {arts.map((a) => {
@@ -149,18 +173,28 @@ export default function App() {
                 <div style={receiptBox}>
                   Unlocked - paid {(Number((st.receipt && st.receipt.amount) || 0) / 1e6).toFixed(2)} USDC on Arc -{" "}
                   <a style={link} href={st.receipt && st.receipt.explorer} target="_blank" rel="noreferrer">view tx</a>
+                  {st.receipt && st.receipt.replayProtection ? <><br />{st.receipt.replayProtection}</> : null}
                 </div>
               </>
             ) : (
               <>
                 <p style={fade}>The rest of this article is locked.</p>
-                <button style={btn} disabled={busy} onClick={() => unlock(a.id)}>{label(st)}</button>
+                <button style={busy ? btnBusy : btn} disabled={busy} onClick={() => unlock(a.id)}>{label(st)}</button>
                 {st && st.status === "error" && <div style={errText}>{st.error} - tap to retry</div>}
               </>
             )}
           </article>
         )
       })}
+
+      <footer style={footer}>
+        Obol - built on Arc for Lepton. The smallest sellable unit of writing, paid per read.<br />
+        <a style={footLink} href="https://www.x402.org/" target="_blank" rel="noreferrer">x402</a>
+        {" - "}
+        <a style={footLink} href={REPO} target="_blank" rel="noreferrer">source</a>
+        {" - "}
+        <a style={footLink} href="https://testnet.arcscan.app" target="_blank" rel="noreferrer">arcscan</a>
+      </footer>
     </div>
   )
 }
